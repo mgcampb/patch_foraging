@@ -5,6 +5,9 @@ opt.iti = 15;
 opt.max_patch_time = 50;
 opt.patch_time = 0:opt.max_patch_time;
 
+% where to save figs
+paths.figs = 'C:\figs\patch_foraging';
+
 % struct for results
 rez = struct;
 % rez.N0 = unifrnd(0,1,opt.num_trials,1); % draw N0 from uniform distribution
@@ -56,8 +59,8 @@ rez.strat2.rew_rate = rez.strat2.total_rew./rez.strat2.total_time;
 %% strategy 3: integrate to bound
 rez.strat3 = struct;
 rez.strat3.bound = 1;
-rez.strat3.slope = linspace(0.2,0.3,30);
-rez.strat3.step = linspace(-0.2,-0.3,30);
+rez.strat3.slope = linspace(0,1,30);
+rez.strat3.step = linspace(0,-1,30);
 rez.strat3.leave_time = nan(opt.num_trials,numel(rez.strat3.slope),numel(rez.strat3.step));
 rez.strat3.rew = nan(opt.num_trials,numel(rez.strat3.slope),numel(rez.strat3.step));
 
@@ -83,7 +86,7 @@ rez.strat3.total_rew = squeeze(sum(rez.strat3.rew));
 rez.strat3.total_time = squeeze(sum(rez.strat3.leave_time)) + opt.num_trials*opt.iti;
 rez.strat3.rew_rate = rez.strat3.total_rew./rez.strat3.total_time;
 
-%% strategy 4: omnicient (allow different wait time for each N0)
+%% omnicient strategy (allow different wait time for each N0)
 rez.omnisc = struct;
 rez.omnisc.wait_time = opt.patch_time; % test all possible wait times
 uniqN0 = unique(rez.N0);
@@ -106,6 +109,8 @@ for i = 1:numel(rez.omnisc.rew_rate)
     end
     rez.omnisc.rew_rate(i) = total_rew_this/total_time_this;
 end
+[rez.omnisc.max_rew_rate, max_idx] = max(rez.omnisc.rew_rate);
+rez.omnisc.opt_leave_time = rez.omnisc.wait_time(allcombs(:,max_idx));
 
 %% random strategy (shuffle leave times from strat2)
 rez.rand = struct();
@@ -141,38 +146,81 @@ legend({'strat1','strat2'});
 xlabel('wait sec');
 ylabel('rew rate');
 
-%% fig: dist of PRT
+%% fig: hist of PRT
 hfig(2) = figure; hold on;
-hfig(2).Name = 'PRT dist for best model 2';
+hfig(2).Name = 'PRT hist for all models';
 [~,max_idx2] = max(rez.strat2.rew_rate);
 histogram(rez.strat2.leave_time(:,max_idx2));
+[c,idx] = max(rez.strat3.rew_rate(:));
+[i1,i2] = ind2sub(size(rez.strat3.rew_rate),idx);
+histogram(rez.strat3.leave_time(:,i1,i2));
 [~,max_idx1] = max(rez.strat1.rew_rate);
 plot([rez.strat1.wait_time(max_idx1) rez.strat1.wait_time(max_idx1)],ylim(),'r--');
+for i = 1:numel(rez.omnisc.opt_leave_time)
+    plot([rez.omnisc.opt_leave_time(i) rez.omnisc.opt_leave_time(i)],ylim(),'g--');
+end
 xlabel('patch residency time (sec)');
 ylabel('count');
-legend({'best model 2','best model 1'});
+legend({'best model 2','best model 3','best model 4','omnisc'});
 
-%% fig: cum reward over time colored by N0
-hfig(3) = figure; hold on;
+%% fig: cumul reward over time colored by N0
+hfig(3) = figure('Position',[300 300 600 400]); hold on;
 hfig(3).Name = 'cumul reward over time colored by N0';
+hleg = {};
+[~,~,N0_num] = unique(rez.N0);
 for i = 1:500
-    plot(opt.patch_time,rez.cum_rew(i,:),'-','Color',[rez.N0(i) 0 0]);
+    hleg{N0_num(i)}=plot(opt.patch_time,rez.cum_rew(i,:)+0.1*randn(1,1),'-','Color',[(rez.N0(i)-min(N0))/(max(N0)-min(N0)) 0 0]);
 end
-map = [(0:0.01:1)' zeros(101,1) zeros(101,1)];
-colormap(map);
-cb = colorbar;
-ylabel(cb,'N_0');
+% map = [(0:0.01:1)' zeros(101,1) zeros(101,1)];
+% colormap(map);
+% caxis([min(N0) max(N0)]);
+% cb = colorbar;
+% ylabel(cb,'N_0');
+hleglines = [];
+for i = 1:numel(uniqN0)
+    hleglines = [hleglines hleg{i}(1)];
+end
+legend(hleglines,{'N0=0.125','N0=0.25','N0=0.5'},'Location','northeastoutside');
 xlabel('sec');
 ylabel('cum. rewards');
+title('500 example trials');
 
-%% fig: PRT vs N0 for best strat2 model
-hfig(4) = figure;
+%% fig: PRT vs N0 for best strat2 and strat3 models
+hfig(4) = figure('Position',[100 100 600 300]);
 hfig(4).Name = 'PRT vs N0 for best model 2';
+
+subplot(1,2,1); hold on;
 [~,max_idx2] = max(rez.strat2.rew_rate);
-scatter(rez.N0+randn(numel(rez.N0),1)*0.01,rez.strat2.leave_time(:,max_idx2),20,'k','MarkerEdgeAlpha',0.1);
-xticks(uniqN0);
+[~,~,N0_num] = unique(rez.N0);
+scatter(N0_num+randn(numel(rez.N0),1)*0.1,rez.strat2.leave_time(:,max_idx2),20,'k','MarkerEdgeAlpha',0.1);
+means = nan(numel(uniqN0),1);
+for i = 1:numel(means)
+    means(i) = mean(rez.strat2.leave_time(rez.N0==uniqN0(i),max_idx2));
+end
+plot(1:numel(uniqN0),means,'rx','MarkerSize',10,'LineWidth',4);
+plot(1:numel(uniqN0),rez.omnisc.opt_leave_time,'gx','MarkerSize',10,'LineWidth',4);
+xticks(1:numel(uniqN0));
+xticklabels(uniqN0);
 xlabel('N_0');
 ylabel('patch residency time (sec)');
+title('strat2');
+ylim([0 25]);
+
+subplot(1,2,2); hold on;
+[~,~,N0_num] = unique(rez.N0);
+scatter(N0_num+randn(numel(rez.N0),1)*0.1,rez.strat3.leave_time(:,i1,i2),20,'k','MarkerEdgeAlpha',0.1);
+means = nan(numel(uniqN0),1);
+for i = 1:numel(means)
+    means(i) = mean(rez.strat3.leave_time(rez.N0==uniqN0(i),i1,i2));
+end
+plot(1:numel(uniqN0),means,'rx','MarkerSize',10,'LineWidth',4);
+plot(1:numel(uniqN0),rez.omnisc.opt_leave_time,'gx','MarkerSize',10,'LineWidth',4);
+xticks(1:numel(uniqN0));
+xticklabels(uniqN0);
+xlabel('N_0');
+ylabel('patch residency time (sec)');
+title('strat3');
+ylim([0 25]);
 
 %% fig: heatmap of rew rate vs slope/step params for strat3
 hfig(5) = figure;
@@ -210,3 +258,6 @@ rez.best_rew_rate = [rez.rand.rew_rate,max(rez.strat1.rew_rate),max(rez.strat2.r
 bar(rez.best_rew_rate)
 xticklabels({'random','strat1','strat2','strat3','omnisc'});
 ylabel('reward rate');
+
+%% save figs
+save_figs(paths.figs,hfig,'png');
