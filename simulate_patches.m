@@ -86,6 +86,36 @@ rez.strat3.total_rew = squeeze(sum(rez.strat3.rew));
 rez.strat3.total_time = squeeze(sum(rez.strat3.leave_time)) + opt.num_trials*opt.iti;
 rez.strat3.rew_rate = rez.strat3.total_rew./rez.strat3.total_time;
 
+%% strategy 3b: "robust counting"
+rez.strat3b = struct;
+rez.strat3b.bound = 1;
+rez.strat3b.slope = linspace(0,1,30);
+rez.strat3b.step = linspace(0,1,30);
+rez.strat3b.leave_time = nan(opt.num_trials,numel(rez.strat3b.slope),numel(rez.strat3b.step));
+rez.strat3b.rew = nan(opt.num_trials,numel(rez.strat3b.slope),numel(rez.strat3b.step));
+
+for j = 1:numel(rez.strat3b.slope)
+    for k = 1:numel(rez.strat3b.step)
+        time_ramp = rez.strat3b.slope(j) * repmat(0:opt.max_patch_time,opt.num_trials,1);
+        rew_ramp = rez.strat3b.step(k) * rez.cum_rew;
+        dec_var = time_ramp+rew_ramp;
+        for i = 1:opt.num_trials
+            leave_idx = find(dec_var(i,:)<=rez.strat3b.bound,1);
+            if ~isempty(leave_idx)
+                rez.strat3b.leave_time(i,j,k) = leave_idx-1;
+                rez.strat3b.rew(i,j,k) = rez.cum_rew(i,leave_idx);
+            else
+                rez.strat3b.leave_time(i,j,k) = opt.max_patch_time;
+                rez.strat3b.rew(i,j,k) = rez.cum_rew(i,end);
+            end
+        end
+    end
+end
+
+rez.strat3b.total_rew = squeeze(sum(rez.strat3b.rew));
+rez.strat3b.total_time = squeeze(sum(rez.strat3b.leave_time)) + opt.num_trials*opt.iti;
+rez.strat3b.rew_rate = rez.strat3b.total_rew./rez.strat3b.total_time;
+
 %% omnicient strategy (allow different wait time for each N0)
 rez.omnisc = struct;
 rez.omnisc.wait_time = opt.patch_time; % test all possible wait times
